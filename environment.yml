@@ -192,6 +192,7 @@ dependencies:
   - libsodium=1.0.20=hc70643c_0
   - libsqlite=3.51.0=hf5d6505_0
   - libssh2=1.11.1=h9aa295b_0
+  - libstdcxx=15.2.0=hae5796f_16
   - libthrift=0.22.0=h23985f6_1
   - libtiff=4.7.1=h8f73337_1
   - libtorch=2.9.1=cpu_mkl_h59ad6ad_101
@@ -226,6 +227,7 @@ dependencies:
   - notebook=7.5.0=pyhcf101f3_0
   - notebook-shim=0.2.4=pyhd8ed1ab_1
   - numpy=2.3.5=py312ha72d056_0
+  - ollama=0.18.3=cpu_hcb16b98_0
   - opencl-headers=2025.06.13=he0c23c2_0
   - opencv=4.12.0=qt6_py312h64de955_607
   - openexr=3.4.4=ha75af49_0
