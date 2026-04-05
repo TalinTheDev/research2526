@@ -17,6 +17,8 @@ from .detector import Detector, RawDetection
 from .attribute_extractor import AttributeExtractor, Attributes
 from .frame_processor import FrameProcessor, FrameData, Detection
 from .visualizer import Visualizer
+from .color_shape_detector import ColorShapeDetector, DEFAULT_COLOR_LABEL_MAP
+from .test_frame_generator import TestFrameGenerator, ShapeSpec
 
 __all__ = [
     "FrameSource", "RawFrame", "SourceType",
@@ -24,4 +26,6 @@ __all__ = [
     "AttributeExtractor", "Attributes",
     "FrameProcessor", "FrameData", "Detection",
     "Visualizer",
+    "ColorShapeDetector", "DEFAULT_COLOR_LABEL_MAP",
+    "TestFrameGenerator", "ShapeSpec",
 ]
