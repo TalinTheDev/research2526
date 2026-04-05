@@ -43,15 +43,18 @@ Why this tests the algorithm properly:
 
 from vision.sim_world import WorldObject, TreeOccluder, RobotState
 from simulation import Simulation
-from scoring_interface import ConfidenceOnlyScorer, ColorLabelScorer
+from scoring_interface import ConfidenceOnlyScorer, ColorLabelScorer, AttributeCountScorer
 from custom import SemanticScorer
 from debug_scorer import DebugScorer
 import random
 import math
 
 DEBUG = False
-SEED = 15
-TREE_COUNT = 45
+SEED = 0
+TREE_COUNT = 50
+SHOW_WINDOW = False
+START = 500 
+COUNT = 500
 
 TARGET = {
     "object": 'child',
@@ -63,191 +66,149 @@ TARGET = {
     "attributes": ['winter clothing', 'outdoor gear']
 }
 
-import random
-import math
+# ─────────────────────────────────────────────────────────────
+# CORE IDEA:
+# generate a "true path" + "decoy path" in latent space,
+# then place objects around those paths with noise
+# ─────────────────────────────────────────────────────────────
 
-# ─────────────────────────────────────────────────────────────────────
-# LOS CHECK
-# ─────────────────────────────────────────────────────────────────────
-def is_occluded(p1, p2, trees, buffer=0.2):
-    (x1, y1), (x2, y2) = p1, p2
-
-    for tree in trees:
-        cx, cy = tree.world_x, tree.world_y
-        r = tree.radius + buffer
-
-        dx = x2 - x1
-        dy = y2 - y1
-
-        if dx == 0 and dy == 0:
-            continue
-
-        t = ((cx - x1)*dx + (cy - y1)*dy) / (dx*dx + dy*dy)
-        t = max(0, min(1, t))
-
-        closest_x = x1 + t * dx
-        closest_y = y1 + t * dy
-
-        if (cx - closest_x)**2 + (cy - closest_y)**2 < r**2:
-            return True
-
-    return False
-
-
-# ─────────────────────────────────────────────────────────────────────
-# TREE GENERATION (same logic, slightly compact)
-# ─────────────────────────────────────────────────────────────────────
-def generate_trees(rng, count=TREE_COUNT):
-    trees = []
-
-    def valid(x, y):
-        if 6 < x < 9 and 0 < y < 2:
-            return False
-        for tx, ty in trees:
-            if (x - tx)**2 + (y - ty)**2 < 0.8**2:
-                return False
-        return True
-
-    attempts = 0
-    while len(trees) < count and attempts < count * 10:
-        x = rng.uniform(0, 22)
-        y = rng.uniform(-5, 6)
-
-        if valid(x, y):
-            trees.append((x, y))
-
-        attempts += 1
-
-    return [
-        TreeOccluder(world_x=x, world_y=y,
-                     radius=0.45,
-                     height=4.5)
-        for x, y in trees
-    ]
-
-
-# ─────────────────────────────────────────────────────────────────────
-# CLUE PLACEMENT (visibility-aware)
-# ─────────────────────────────────────────────────────────────────────
-def place_clue(prev, target, trees, rng):
-    for _ in range(50):
-        t = rng.uniform(0.3, 0.7)
-
-        x = prev[0] + t * (target[0] - prev[0]) + rng.uniform(-0.8, 0.8)
-        y = prev[1] + t * (target[1] - prev[1]) + rng.uniform(-0.8, 0.8)
-
-        if not is_occluded(prev, (x, y), trees):
-            return (x, y)
-
-    return (x, y)
-
-
-def clear_path(p1, p2, trees):
-    cleaned = []
-    for tree in trees:
-        if is_occluded(p1, p2, [tree], buffer=0.3):
-            continue
-        cleaned.append(tree)
-    return cleaned
-
-
-# ─────────────────────────────────────────────────────────────────────
-# MAIN WORLD GENERATOR
-# ─────────────────────────────────────────────────────────────────────
 def make_world(seed=42):
 
     rng = random.Random(seed)
 
-    # ── TREES FIRST ──────────────────────────────────────────────────
-    trees = generate_trees(rng)
-
-    # ── TARGET ───────────────────────────────────────────────────────
-    tx = rng.uniform(21.5, 23.0)
-    ty = rng.uniform(4.5, 5.5)
-    target_pos = (tx, ty)
-
+    trees = []
     objects = []
 
-    objects.append(
-        WorldObject(tx, ty,
-                    color="red",
-                    shape="rectangle",
-                    base_width=0.65,
-                    base_height=1.2,
-                    label="child",
-                    is_target=True)
-    )
+    # ── STEP 1: Generate forest (background only) ─────────────
+    def generate_forest(n=TREE_COUNT):
+        pts = []
+        for _ in range(n):
+            x = rng.uniform(0, 24)
+            y = rng.uniform(-6, 6)
+            pts.append((x, y))
+        return pts
 
-    # ── CLUE CHAIN (visibility safe) ─────────────────────────────────
-    start = (9.5, 1.0)  # just past wall gap
-    prev = start
+    tree_pts = generate_forest()
 
-    clue_positions = []
-    for _ in range(3):
-        pos = place_clue(prev, target_pos, trees, rng)
-        clue_positions.append(pos)
-        prev = pos
+    trees = [
+        TreeOccluder(x, y, radius=0.45, height=4.5)
+        for x, y in tree_pts
+    ]
 
-    # clear tree occlusion along path
-    for i in range(len(clue_positions) - 1):
-        trees = clear_path(clue_positions[i],
-                           clue_positions[i+1],
-                           trees)
+    # ── STEP 2: Define TRUE PATH (latent spline-like path) ─────
+    start = (2, rng.uniform(-1, 1))
+    target = (22, rng.uniform(2, 4))
 
-    # ── ADD CLUE OBJECTS ─────────────────────────────────────────────
-    labels = ["hat", "jacket", "gloves"]
+    def interpolate_path(p0, p1, steps=4, noise=1.0):
+        pts = []
+        for i in range(1, steps + 1):
+            t = i / (steps + 1)
+            x = p0[0] + t * (p1[0] - p0[0])
+            y = p0[1] + t * (p1[1] - p0[1])
 
-    for (x, y), label in zip(clue_positions, labels):
+            # add curvature
+            y += math.sin(t * math.pi) * rng.uniform(-noise, noise)
+
+            pts.append((x, y))
+        return pts
+
+    true_path = [start] + interpolate_path(start, target, 3) + [target]
+
+    # ── STEP 3: Create CLUES along true path ───────────────────
+    clue_labels = ["hat", "jacket", "gloves"]
+
+    for (x, y), label in zip(true_path[1:-1], clue_labels):
         objects.append(
-            WorldObject(x, y,
-                        color="red",
-                        shape="rectangle",
-                        base_width=0.5 if label == "hat" else 0.75,
-                        base_height=0.35 if label == "hat" else 0.55,
-                        label=label)
+            WorldObject(
+                x + rng.uniform(-0.5, 0.5),
+                y + rng.uniform(-0.5, 0.5),
+                color="red",
+                shape="rectangle",
+                base_width=0.6,
+                base_height=0.5,
+                label=label
+            )
         )
 
-    # ── DISTRACTORS ──────────────────────────────────────────────────
-    colors = ["blue", "green", "yellow", "purple", "orange", "cyan", "red"]
+    # ── STEP 4: TRUE TARGET ───────────────────────────────────
+    tx, ty = target
+    objects.append(
+        WorldObject(
+            tx, ty,
+            color="red",
+            shape="rectangle",
+            base_width=0.65,
+            base_height=1.2,
+            label="child",
+            is_target=True
+        )
+    )
+
+    # ── STEP 5: DECOY PATH (parallel but diverging) ────────────
+    offset = rng.choice([-3, 3])
+    decoy_target = (target[0] - rng.uniform(3, 5), target[1] + offset)
+
+    decoy_path = [start] + interpolate_path(start, decoy_target, 3)
+
+    for (x, y) in decoy_path[1:]:
+        objects.append(
+            WorldObject(
+                x + rng.uniform(-0.5, 0.5),
+                y + rng.uniform(-0.5, 0.5),
+                color="red",  # SAME COLOR
+                shape="rectangle",
+                base_width=0.6,
+                base_height=0.5,
+                label=rng.choice(["jacket", "coat"])
+            )
+        )
+
+    # ── STEP 6: FALSE TARGET ──────────────────────────────────
+    fx, fy = decoy_target
+    objects.append(
+        WorldObject(
+            fx, fy,
+            color="blue",
+            shape="rectangle",
+            base_width=0.65,
+            base_height=1.2,
+            label="child",   # identical!
+            is_target=False
+        )
+    )
+
+    # ── STEP 7: RANDOM DISTRACTORS ─────────────────────────────
+    colors = ["blue", "green", "yellow", "purple", "orange", "cyan"]
     shapes = ["circle", "triangle", "rectangle"]
     labels = ["vehicle", "animal", "debris", "equipment"]
 
-    for _ in range(12):
-        x = rng.uniform(0, 20)
-        y = rng.uniform(-5, 6)
-
+    for _ in range(15):
         objects.append(
-            WorldObject(x, y,
-                        color=rng.choice(colors),
-                        shape=rng.choice(shapes),
-                        base_width=0.7,
-                        base_height=0.9,
-                        label=rng.choice(labels))
+            WorldObject(
+                rng.uniform(0, 24),
+                rng.uniform(-6, 6),
+                color=rng.choice(colors),
+                shape=rng.choice(shapes),
+                base_width=rng.uniform(0.5, 1.0),
+                base_height=rng.uniform(0.5, 1.2),
+                label=rng.choice(labels)
+            )
         )
-
-    # hard negatives
-    objects.append(
-        WorldObject(8, 2,
-                    color="blue",
-                    shape="rectangle",
-                    base_width=0.65,
-                    base_height=1.2,
-                    label="child")  # false target
-    )
 
     return trees, objects
 
-trees, objects = make_world(seed=SEED)
 
-def main():
+
+def main(seed):
+    trees, objects = make_world(seed=seed)
     sim = Simulation(
         objects=objects,
         trees=trees,
         camera_width=800,
         camera_height=600,
-        fov_degrees=60.0,
+        fov_degrees=90.0,
         success_fill=0.04,
-        max_frames=6000,
+        max_frames=2000,
         robot_start=RobotState(
             x=0.0, y=0.0,
             heading=0.15,       # nearly east, slight north — will find gap naturally
@@ -255,24 +216,33 @@ def main():
             turn_rate=0.05,
             search_turn=-0.015,
         ),
-        show_window=True,
+        show_window=SHOW_WINDOW,
         window_scale=1.0,
         frame_delay_ms=0,
-        pause_on_end=True,
+        pause_on_end=SHOW_WINDOW,
     )
 
     if DEBUG:
-        sim.run(DebugScorer(SemanticScorer(), print_every=30), TARGET)
+        sim.run(DebugScorer(SemanticScorer(), print_every=30), TARGET, debug=DEBUG)
     else:
         sim.run_comparison(
             algorithms=[
                 ConfidenceOnlyScorer(),
                 ColorLabelScorer(),
+                AttributeCountScorer(),
                 SemanticScorer(),
             ],
+            seed=seed,
             target=TARGET,
+            debug=DEBUG,
         )
 
+def run():
+    print(f"\n{'='*70}\n  COMPARISON RESULTS\n{'='*70}")
+    print(f"  {'Seed,':<10} {'Algorithm,':<20} {'Result,':<10} {'Frames,':>8} {'Path,':>8} {'FalseFollows,':>14} {'FillRatio':>10}")
+    for n in range(START, START + COUNT):
+        main(seed=n)
+    print(f"{'='*70}\n")
 
 if __name__ == "__main__":
-    main()
+    run()

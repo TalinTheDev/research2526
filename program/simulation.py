@@ -157,7 +157,7 @@ class Simulation:
         self._sim_det = SimDetector()
         self._extractor = AttributeExtractor()
 
-    def run(self, algo, target, window_title=None):
+    def run(self, algo, target, window_title=None, debug = False):
         robot   = copy.deepcopy(self._robot_start)
         metrics = SimMetrics(algo_name=algo.name)
         title   = window_title or f"Sim: {algo.name}"
@@ -219,7 +219,8 @@ class Simulation:
                 if best:
                     p2=self._find_proj(best,projections)
                     ot=" [TARGET]" if(p2 and p2["obj"].is_target) else " [distractor]"
-                print(f"  f={frame_idx:04d} pos=({robot.x:.1f},{robot.y:.1f})"
+                if debug:
+                    print(f"  f={frame_idx:04d} pos=({robot.x:.1f},{robot.y:.1f})"
                       f" hdg={math.degrees(robot.heading):.0f}deg"
                       f" following={bs}{ot} fill={fill:.4f}")
 
@@ -249,10 +250,14 @@ class Simulation:
                 if key in (ord('q'),ord('Q'),27): break
                 if key==ord(' '):
                     paused=not paused
-                    print(f"  {'[PAUSED]' if paused else '[RESUMED]'}")
+                    if debug:
+                        print(f"  {'[PAUSED]' if paused else '[RESUMED]'}")
                 while paused:
                     k2=cv2.waitKey(50)&0xFF
-                    if k2==ord(' '): paused=False; print("  [RESUMED]")
+                    if k2==ord(' '): 
+                        paused=False
+                        if debug:
+                            print("  [RESUMED]")
                     elif k2 in (ord('q'),ord('Q'),27): paused=False; break
 
             if fill>=self._success_fill:
@@ -269,8 +274,9 @@ class Simulation:
                 bw=int(win_w*self._window_scale); bh=int(win_h*self._window_scale)
                 banner=cv2.resize(banner,(bw,bh))
             cv2.imshow(title,banner)
-            print(f"\n  Run complete: {metrics.summary()}")
-            print("  [Press SPACE or Q to continue]\n")
+            if debug:
+                print(f"\n  Run complete: {metrics.summary()}")
+                print("  [Press SPACE or Q to continue]\n")
             while True:
                 k=cv2.waitKey(50)&0xFF
                 if k in (ord(' '),ord('q'),ord('Q'),27): break
@@ -278,21 +284,20 @@ class Simulation:
         cv2.destroyWindow(title)
         return metrics
 
-    def run_comparison(self, algorithms, target):
+    def run_comparison(self, algorithms, seed, target, debug = False):
         all_metrics=[]
         for algo in algorithms:
-            print(f"\n{'='*60}\n  Running: {algo.name}\n{'='*60}")
-            m=self.run(algo,target)
+            if(debug):
+                print(f"\n{'='*60}\n  Running: {algo.name}\n{'='*60}")
+            m=self.run(algo,target, debug)
             all_metrics.append(m)
 
-        print(f"\n{'='*70}\n  COMPARISON RESULTS\n{'='*70}")
-        print(f"  {'Algorithm':<20} {'Result':<10} {'Frames':>8} {'Path':>8} {'FalseFollows':>14} {'FillRatio':>10}")
-        print(f"  {'-'*66}")
+
         for m in all_metrics:
             s="SUCCESS" if m.success else "TIMEOUT"
-            print(f"  {m.algo_name:<20} {s:<10} {m.frames_elapsed:>8} "
-                  f"{m.path_length:>8.2f} {m.false_follows:>14} {m.fill_ratio_final:>10.4f}")
-        print(f"{'='*70}\n")
+            print(f"  {seed:<10}, {m.algo_name:<20}, {s:<10}, {m.frames_elapsed:>8}, "
+                  f"{m.path_length:>8.2f}, {m.false_follows:>14}, {m.fill_ratio_final:>10.4f}")
+
         return all_metrics
 
     def _steer(self,robot,best):

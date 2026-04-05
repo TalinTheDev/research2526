@@ -158,3 +158,36 @@ class ColorLabelScorer:
     @staticmethod
     def _known_colors() -> set:
         return {"red","orange","yellow","green","cyan","blue","purple","pink","brown","white","black","gray"}
+    
+class AttributeCountScorer:
+    """
+    Scores detections based on how many attributes match
+    the target description.
+
+    No weighting, no reasoning — just overlap counting.
+    """
+
+    name = "AttributeCount"
+
+    def score(self, detections, target):
+
+        target_descs = set(d.lower() for d in target.get("descriptions", []))
+        target_label = (target.get("object") or "").lower()
+
+        for det in detections:
+
+            attr_set = set(a.lower() for a in det.attributes)
+
+            # count matching attributes
+            attr_score = len(attr_set & target_descs) / max(len(target_descs), 1)
+
+            # weak label usage
+            label_score = 1.0 if det.label.lower() == target_label else 0.0
+
+            det.relevance_score = round(
+                0.7 * attr_score +
+                0.3 * label_score,
+                4
+            )
+
+        return detections
