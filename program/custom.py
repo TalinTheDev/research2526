@@ -38,6 +38,10 @@ class SemanticScorer:
         "label_match":0.35,"description_match":0.25,"state_match":0.10,
         "confidence":0.10,"size":0.10,"temporal":0.05,"position":0.05,
     }
+    # DEFAULT_WEIGHTS = {
+    #     "label_match":0.40,"description_match":0.35,"state_match":0.10,
+    #     "confidence":0.05,"size":0.06,"temporal":0.02,"position":0.02,
+    # }
 
     def __init__(self, weights=None, temporal_window=10, frame_width=800):
         raw = weights or self.DEFAULT_WEIGHTS.copy()

@@ -41,6 +41,8 @@ Why this tests the algorithm properly:
       keeps moving, locks onto red child (band 0.65+) when visible.
 """
 
+import sys
+
 from vision.sim_world import WorldObject, TreeOccluder, RobotState
 from simulation import Simulation
 from scoring_interface import ConfidenceOnlyScorer, ColorLabelScorer, AttributeCountScorer
@@ -53,8 +55,8 @@ DEBUG = False
 SEED = 0
 TREE_COUNT = 50
 SHOW_WINDOW = False
-START = 500 
-COUNT = 500
+START = 44
+COUNT = 1
 
 TARGET = {
     "object": 'child',
@@ -199,7 +201,7 @@ def make_world(seed=42):
 
 
 
-def main(seed):
+def main(seed, window, debug):
     trees, objects = make_world(seed=seed)
     sim = Simulation(
         objects=objects,
@@ -216,14 +218,13 @@ def main(seed):
             turn_rate=0.05,
             search_turn=-0.015,
         ),
-        show_window=SHOW_WINDOW,
+        show_window=window,
         window_scale=1.0,
         frame_delay_ms=0,
-        pause_on_end=SHOW_WINDOW,
+        pause_on_end=window,
     )
-
-    if DEBUG:
-        sim.run(DebugScorer(SemanticScorer(), print_every=30), TARGET, debug=DEBUG)
+    if debug:
+        sim.run(DebugScorer(SemanticScorer(), print_every=30), TARGET, debug=debug)
     else:
         sim.run_comparison(
             algorithms=[
@@ -234,14 +235,20 @@ def main(seed):
             ],
             seed=seed,
             target=TARGET,
-            debug=DEBUG,
+            debug=debug,
         )
 
 def run():
     print(f"\n{'='*70}\n  COMPARISON RESULTS\n{'='*70}")
     print(f"  {'Seed,':<10} {'Algorithm,':<20} {'Result,':<10} {'Frames,':>8} {'Path,':>8} {'FalseFollows,':>14} {'FillRatio':>10}")
-    for n in range(START, START + COUNT):
-        main(seed=n)
+    
+    if len(sys.argv) > 1:
+    #    print(f"using seed {sys.argv[1]} and showing window")
+       main(int(sys.argv[1]), True, True)
+    else:
+        for n in range(START, START + COUNT):
+            main(n, False, False)
+
     print(f"{'='*70}\n")
 
 if __name__ == "__main__":

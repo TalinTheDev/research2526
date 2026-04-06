@@ -1,0 +1,38 @@
+Good:
+===
+79
+128
+- 315
+350
+358
+413 (used only seen object to get closer to more clues/target)
+552
+563
+566
+812 (example of how more tuning can lead to more efficiency coat vs jacket)
+866
+1114
+- 1147
+1376
+- 1443
+1456
+- 1656
+- 1750 (perfect and also shows how clues can be used to fix incorrect paths)
+1966
+1975
+
+Maybe:
+=====
+125
+144
+373
+399
+651
+1046
+1067
+1205
+1247
+1591
+1752
+1820
+1982

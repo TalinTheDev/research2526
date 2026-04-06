@@ -1,12 +1,16 @@
 import pandas as pd
 
 def find_semantic_best_seeds(csv_file, min_other_success=1):
-    # Load CSV and handle extra spaces
+    # Load CSV
     df = pd.read_csv(csv_file, skipinitialspace=True)
     df.columns = df.columns.str.strip()
 
-    # Filter out TIMEOUTs
-    success_df = df[df["Result"].str.strip() != "TIMEOUT"].copy()
+    # Normalize strings
+    df["Result"] = df["Result"].str.strip()
+    df["Algorithm"] = df["Algorithm"].str.strip()
+
+    # Keep only successful runs
+    success_df = df[df["Result"] != "TIMEOUT"].copy()
 
     # Ensure Frames is numeric
     success_df["Frames"] = pd.to_numeric(success_df["Frames"], errors="coerce")
@@ -14,21 +18,20 @@ def find_semantic_best_seeds(csv_file, min_other_success=1):
     result_seeds = []
 
     for seed, group in success_df.groupby("Seed"):
-        # Count other successful algorithms (excluding SemanticScorer)
-        other_success = group[group["Algorithm"].str.strip() != "SemanticScorer"]["Algorithm"].nunique()
-
-        # Skip if not enough other successful algorithms
-        if other_success < min_other_success:
+        # Check SemanticScorer exists and succeeded
+        if "SemanticScorer" not in group["Algorithm"].values:
             continue
 
-        # Find minimum frames
-        min_frames = group["Frames"].min()
+        # Split SemanticScorer vs others
+        semantic_row = group[group["Algorithm"] == "SemanticScorer"].iloc[0]
+        other_group = group[group["Algorithm"] != "SemanticScorer"]
 
-        # Get algorithms that achieved this minimum
-        fastest = group[group["Frames"] == min_frames]
+        # Count OTHER successful algorithms
+        if len(other_group) < min_other_success:
+            continue
 
-        # Only consider seeds where SemanticScorer is the **sole fastest**
-        if len(fastest) == 1 and fastest.iloc[0]["Algorithm"].strip() == "SemanticScorer":
+        # SemanticScorer must be strictly faster than ALL others
+        if all(semantic_row["Frames"] < other_group["Frames"]):
             result_seeds.append(seed)
 
     return result_seeds
@@ -46,6 +49,6 @@ if __name__ == "__main__":
 
     seeds = find_semantic_best_seeds(csv_file, min_other_success=min_other)
 
-    print(f"Seeds where SemanticScorer is strictly fastest and at least {min_other} other algorithms succeeded:")
+    print(f"{len(seeds)} Seeds where SemanticScorer is strictly best and beats at least {min_other} other successful algorithms:")
     for s in seeds:
         print(s)
