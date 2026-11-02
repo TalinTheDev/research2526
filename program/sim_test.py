@@ -244,7 +244,7 @@ def run():
     
     if len(sys.argv) > 1:
     #    print(f"using seed {sys.argv[1]} and showing window")
-       main(int(sys.argv[1]), True, True)
+       main(int(sys.argv[1]), True, False)
     else:
         for n in range(START, START + COUNT):
             main(n, False, False)
